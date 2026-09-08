@@ -69,11 +69,14 @@ export default function CinemaApp() {
   const [flippedMovie, setFlippedMovie] = useState<number | null>(null);
 
   const [dbSeats, setDbSeats] = useState<any[]>([]);
-
   const ticketRef = useRef<HTMLDivElement>(null);
+
+  // --- Refs & States לגרירה ידנית במחשב ---
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const scrollContentRef = useRef<HTMLDivElement>(null);
-  const [scrollTranslate, setScrollTranslate] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const [startX, setStartX] = useState(0);
+  const [scrollLeft, setScrollLeft] = useState(0);
+  const [dragged, setDragged] = useState(false);
 
   useEffect(() => {
     const fetchSeats = async () => {
@@ -139,17 +142,37 @@ export default function CinemaApp() {
     }
   };
 
-  const handleScrollMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!scrollContainerRef.current || !scrollContentRef.current) return;
-    const container = scrollContainerRef.current;
-    const content = scrollContentRef.current;
-    const rect = container.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const percentage = 1 - (x / rect.width);
-    const overflow = content.scrollWidth - rect.width;
-    if (overflow > 0) {
-      setScrollTranslate(overflow * percentage);
+  // --- פונקציות גרירה (Drag to Scroll) למחשב ---
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (!scrollContainerRef.current) return;
+    setIsDragging(true);
+    setDragged(false);
+    setStartX(e.pageX - scrollContainerRef.current.offsetLeft);
+    setScrollLeft(scrollContainerRef.current.scrollLeft);
+  };
+
+  const handleMouseLeave = () => {
+    setIsDragging(false);
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDragging || !scrollContainerRef.current) return;
+    e.preventDefault();
+    const x = e.pageX - scrollContainerRef.current.offsetLeft;
+    const walk = (x - startX) * 1.5;
+    if (Math.abs(walk) > 5) {
+      setDragged(true);
     }
+    scrollContainerRef.current.scrollLeft = scrollLeft - walk;
+  };
+
+  const handleMovieClick = (id: number) => {
+    if (dragged) return; // לא הופך את הסרט אם המשתמש רק גרר את הקרוסלה
+    setFlippedMovie(flippedMovie === id ? null : id);
   };
 
   const isFormValid = fullName.trim() !== '' && nickname.trim() !== '' && selectedMovie !== null;
@@ -202,52 +225,50 @@ export default function CinemaApp() {
       </div>
 
       <div className="pt-4 border-t border-zinc-800">
-        <label className="block text-sm font-semibold text-gray-400 uppercase tracking-widest mb-4 flex justify-between items-end">
-          <span>בקרוב ב-Spider Cinema</span>
-          <span className="text-[10px] text-zinc-600 font-normal normal-case opacity-70">&larr; הזז עכבר כדי לגלול, לחץ כדי לקרוא &rarr;</span>
+        <label className="block text-sm font-semibold text-gray-400 uppercase tracking-widest mb-4">
+          בקרוב ב-Spider Cinema
         </label>
 
+        {/* אזור הגלילה שמשלב מגע במובייל וגרירה במחשב */}
         <div
           ref={scrollContainerRef}
-          onMouseMove={handleScrollMouseMove}
-          className="w-full overflow-hidden cursor-ew-resize relative rounded-xl py-4 -my-4"
+          onMouseDown={handleMouseDown}
+          onMouseLeave={handleMouseLeave}
+          onMouseUp={handleMouseUp}
+          onMouseMove={handleMouseMove}
+          className={`w-full overflow-x-auto custom-scrollbar py-4 -my-4 touch-pan-x ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
         >
-          <div className="absolute top-0 right-0 w-8 h-full bg-gradient-to-l from-zinc-900 to-transparent z-10 pointer-events-none"></div>
-          <div className="absolute top-0 left-0 w-8 h-full bg-gradient-to-r from-zinc-900 to-transparent z-10 pointer-events-none"></div>
-
-          <div
-            ref={scrollContentRef}
-            className="flex gap-4 w-max transition-transform duration-500 ease-out py-2 px-2"
-            style={{ transform: `translateX(${scrollTranslate}px)` }}
-          >
+          <div className="flex gap-4 w-max px-2 pb-4">
             {upcomingMovies.map((movie) => {
               const isFlipped = flippedMovie === movie.id;
               return (
                 <div
                   key={movie.id}
-                  className="w-[120px] md:w-[150px] flex-shrink-0 cursor-pointer group transition-all duration-300 hover:-translate-y-2 hover:scale-105 [perspective:1000px]"
-                  onClick={() => setFlippedMovie(isFlipped ? null : movie.id)}
+                  className="w-[130px] md:w-[150px] flex-shrink-0 group transition-all duration-300 hover:-translate-y-2 hover:scale-105 [perspective:1000px]"
+                  onClick={() => handleMovieClick(movie.id)}
                 >
                   <div className={`w-full aspect-[2/3] relative transition-transform duration-700 [transform-style:preserve-3d] ${isFlipped ? '[transform:rotateY(180deg)]' : ''}`}>
+
+                    {/* צד קדמי */}
                     <div className="absolute inset-0 bg-zinc-800 rounded-xl border border-zinc-700 overflow-hidden shadow-lg [backface-visibility:hidden]">
                       <img
                         src={movie.image}
                         alt={movie.title}
+                        draggable="false" // חובה כדי שהגרירה בעכבר תעבוד חלק
                         className="w-full h-full object-cover transition-all duration-500"
                         onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                       />
                     </div>
-                    {/* צד אחורי - תיאור */}
+
+                    {/* צד אחורי */}
                     <div className="absolute inset-0 bg-zinc-800 rounded-xl border-2 border-red-900/50 overflow-hidden shadow-lg [backface-visibility:hidden] [transform:rotateY(180deg)] p-2 flex flex-col items-center text-center">
                       <h4 className="text-white font-bold mt-1 mb-1 text-xs md:text-sm drop-shadow-md leading-tight px-1">{movie.title}</h4>
-
-                      {/* אזור התוכן עם גלילה נסתרת */}
-                      <div className="w-full flex-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden flex items-center px-1">
+                      <div className="w-full flex-1 overflow-y-auto custom-scrollbar flex items-center px-1">
                         <p className="text-zinc-300 text-[10px] md:text-[11px] leading-tight md:leading-snug">{movie.description}</p>
                       </div>
-
-                      <div className="mt-1 text-[9px] md:text-[10px] text-red-400 animate-pulse font-bold">בקרוב</div>
+                      <div className="mt-1 mb-1 text-[9px] md:text-[10px] text-red-400 animate-pulse font-bold">בקרוב</div>
                     </div>
+
                   </div>
                 </div>
               );
@@ -349,7 +370,7 @@ export default function CinemaApp() {
       <div className="space-y-4">
         {[
           { id: 'popcorn', name: 'פופקורן גדול', icon: '🍿' },
-          { id: 'nachos', name: 'נאצ׳וס ורוטב גבינה', icon: '🧀' },
+          { id: 'nachos', name: 'נאצ׳וס', icon: '🧀' },
           { id: 'drinks', name: 'שתייה קלה', icon: '🥤' }
         ].map(item => (
           <div key={item.id} className="flex items-center justify-between p-4 bg-zinc-900 rounded-xl border border-zinc-800">
@@ -376,7 +397,7 @@ export default function CinemaApp() {
           {isLockingSeat ? (
             <span className="flex items-center gap-2">
               <svg className="animate-spin h-5 w-5 text-white" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-              משריין ומנפיק כרטיס...
+              משריין כרטיס...
             </span>
           ) : 'סיום והנפקת כרטיס'}
         </button>
@@ -481,6 +502,25 @@ export default function CinemaApp() {
           {step === 4 && renderStep4()}
         </div>
       </div>
+
+      {/* עיצוב אלגנטי לפס הגלילה במחשב */}
+      <style dangerouslySetInnerHTML={{
+        __html: `
+        .custom-scrollbar::-webkit-scrollbar {
+          height: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: rgba(24, 24, 27, 0.5); 
+          border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: rgba(63, 63, 70, 0.8); 
+          border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: rgba(82, 82, 91, 1); 
+        }
+      `}} />
     </div>
   );
 }
